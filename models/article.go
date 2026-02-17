@@ -1,7 +1,6 @@
 package models
 
 import (
-	"github.com/beego/beego/v2/client/orm"
 	"time"
 )
 
@@ -13,8 +12,4 @@ type Article struct {
 	Status     int       `orm:"default(2)"`
 	CreateTime time.Time `orm:"auto_now_add;type(datetime)"`
 	UpdateTime time.Time `orm:"auto_now;type(datetime)"`
-}
-
-func init() {
-	orm.RegisterModel(new(Article))
 }

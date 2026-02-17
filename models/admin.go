@@ -35,8 +35,9 @@ func init() {
 	dbPath := "./data/blog.db"
 	os.MkdirAll("./data", 0755)
 	orm.RegisterDataBase("default", "sqlite3", dbPath)
-	orm.RegisterModel(new(Admin))
+	orm.RegisterModel(new(Admin), new(Article), new(Game), new(Tool))
 	orm.BootStrap()
+	orm.RunSyncdb("default", false, true)
 
 	o := orm.NewOrm()
 	var admin Admin

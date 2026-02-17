@@ -1,7 +1,6 @@
 package models
 
 import (
-	"github.com/beego/beego/v2/client/orm"
 	"time"
 )
 
@@ -12,8 +11,4 @@ type Tool struct {
 	Folder     string    `orm:"size(255)"`
 	Status     int       `orm:"default(2)"`
 	CreateTime time.Time `orm:"auto_now_add;type(datetime)"`
-}
-
-func init() {
-	orm.RegisterModel(new(Tool))
 }

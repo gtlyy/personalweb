@@ -1,13 +1,19 @@
 package main
 
 import (
+	"encoding/gob"
 	"os"
 
 	"github.com/beego/beego/v2/server/web"
 	"github.com/beego/beego/v2/server/web/filter/cors"
+	"personalweb/models"
 	_ "personalweb/routers"
 	"personalweb/utils"
 )
+
+func init() {
+	gob.Register(models.Admin{})
+}
 
 func main() {
 	// 初始化日志

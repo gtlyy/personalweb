@@ -144,6 +144,13 @@ func (c *AdminController) handleUpload(folderType string) (string, error) {
 		return "", fmt.Errorf("解压失败: %v", err)
 	}
 
+	// 查找解压后的子文件夹（ZIP 文件通常会包含一个根文件夹）
+	subFolders, err := os.ReadDir(extractPath)
+	if err == nil && len(subFolders) == 1 && subFolders[0].IsDir() {
+		// 如果只有一个子文件夹，使用子文件夹名称
+		folder = folder + "/" + subFolders[0].Name()
+	}
+
 	return folder, nil
 }
 
