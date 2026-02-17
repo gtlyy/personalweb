@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/beego/beego/v2/client/orm"
-	"github.com/beego/beego/v2/core/logs"
 	"github.com/beego/beego/v2/server/web"
 )
 
@@ -23,6 +22,14 @@ const (
 	MaxCategoryLength = 50
 	MaxContentLength  = 500000 // 500KB
 )
+
+func getClientIP(c *web.Controller) string {
+	ip := c.Ctx.Input.IP()
+	if ip == "" || ip == "::1" {
+		ip = "127.0.0.1"
+	}
+	return ip
+}
 
 var (
 	ErrFileTooLarge    = errors.New("文件大小超出限制")
@@ -178,6 +185,7 @@ func (c *AdminController) DoLogin() {
 	if err != nil {
 		c.SetSession("login_attempts", attemptCount+1)
 		c.SetSession("last_login_attempt", time.Now())
+		utils.LogWarn("Login failed: user not found, IP: %s, username: %s", getClientIP(&c.Controller), username)
 		c.Data["Msg"] = "账号不存在"
 		c.TplName = "admin/login.tpl"
 		return
@@ -185,6 +193,7 @@ func (c *AdminController) DoLogin() {
 	if !admin.CheckPassword(password) {
 		c.SetSession("login_attempts", attemptCount+1)
 		c.SetSession("last_login_attempt", time.Now())
+		utils.LogWarn("Login failed: wrong password, IP: %s, username: %s", getClientIP(&c.Controller), username)
 		c.Data["Msg"] = "密码错误"
 		c.TplName = "admin/login.tpl"
 		return
@@ -192,11 +201,16 @@ func (c *AdminController) DoLogin() {
 
 	c.SetSession("login_attempts", 0)
 	c.SetSession("admin", admin)
+	utils.LogInfo("User logged in successfully, IP: %s, username: %s", getClientIP(&c.Controller), username)
 	c.Redirect("/admin/index", 302)
 }
 
 // 退出
 func (c *AdminController) Logout() {
+	admin, _ := c.GetSession("admin").(models.Admin)
+	if admin.Username != "" {
+		utils.LogInfo("User logged out, username: %s", admin.Username)
+	}
 	c.DestroySession()
 	c.Redirect("/admin/login", 302)
 }
@@ -243,11 +257,13 @@ func (c *AdminController) DoAdd() {
 		Status:    status,
 	})
 	if err != nil {
-		logs.Error("Failed to insert article: %v", err)
+		utils.LogError("Failed to insert article: %v", err)
 		c.Data["Msg"] = "保存失败，请重试"
 		c.TplName = "admin/add.tpl"
 		return
 	}
+	admin, _ := c.GetSession("admin").(models.Admin)
+	utils.LogInfo("Article created: title=%s, category=%s, author=%s", title, category, admin.Username)
 	c.Redirect("/admin/index", 302)
 }
 
@@ -288,7 +304,14 @@ func (c *AdminController) DoEdit() {
 func (c *AdminController) Del() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
-	o.Delete(&models.Article{Id: id})
+	var art models.Article
+	art.Id = id
+	if err := o.Read(&art); err == nil {
+		title := art.Title
+		o.Delete(&art)
+		admin, _ := c.GetSession("admin").(models.Admin)
+		utils.LogInfo("Article deleted: id=%d, title=%s, author=%s", id, title, admin.Username)
+	}
 	c.Redirect("/admin/index", 302)
 }
 
@@ -329,6 +352,7 @@ func (c *AdminController) ChangePassword() {
 	admin.Password = newPwd
 	admin.EncryptPassword()
 	o.Update(&admin, "Password")
+	utils.LogInfo("Password changed for user: %s", admin.Username)
 	c.DestroySession()
 	c.Data["Msg"] = "修改成功，请重新登录"
 	c.TplName = "admin/login.tpl"
@@ -354,7 +378,7 @@ func (c *AdminController) GameDoAdd() {
 
 	folder, err := c.handleUpload("game")
 	if err != nil {
-		logs.Error("处理上传文件失败: %v", err)
+		utils.LogError("处理上传文件失败: %v", err)
 		c.Redirect("/admin/game", 302)
 		return
 	}
@@ -366,6 +390,8 @@ func (c *AdminController) GameDoAdd() {
 		Folder:   folder,
 		Status:   status,
 	})
+	admin, _ := c.GetSession("admin").(models.Admin)
+	utils.LogInfo("Game uploaded: title=%s, category=%s, folder=%s, author=%s", title, category, folder, admin.Username)
 	c.Redirect("/admin/game", 302)
 }
 
@@ -405,9 +431,12 @@ func (c *AdminController) GameDel() {
 	o := orm.NewOrm()
 	game := models.Game{Id: id}
 	if o.Read(&game) == nil {
+		title := game.Title
 		uploadPath := "./static/uploads/" + game.Folder
 		os.RemoveAll(uploadPath)
 		o.Delete(&game)
+		admin, _ := c.GetSession("admin").(models.Admin)
+		utils.LogInfo("Game deleted: id=%d, title=%s, author=%s", id, title, admin.Username)
 	}
 	c.Redirect("/admin/game", 302)
 }
@@ -432,7 +461,7 @@ func (c *AdminController) ToolDoAdd() {
 
 	folder, err := c.handleUpload("tool")
 	if err != nil {
-		logs.Error("处理上传文件失败: %v", err)
+		utils.LogError("处理上传文件失败: %v", err)
 		c.Redirect("/admin/tool", 302)
 		return
 	}
@@ -444,6 +473,8 @@ func (c *AdminController) ToolDoAdd() {
 		Folder:   folder,
 		Status:   status,
 	})
+	admin, _ := c.GetSession("admin").(models.Admin)
+	utils.LogInfo("Tool uploaded: title=%s, category=%s, folder=%s, author=%s", title, category, folder, admin.Username)
 	c.Redirect("/admin/tool", 302)
 }
 
@@ -483,9 +514,12 @@ func (c *AdminController) ToolDel() {
 	o := orm.NewOrm()
 	tool := models.Tool{Id: id}
 	if o.Read(&tool) == nil {
+		title := tool.Title
 		uploadPath := "./static/uploads/" + tool.Folder
 		os.RemoveAll(uploadPath)
 		o.Delete(&tool)
+		admin, _ := c.GetSession("admin").(models.Admin)
+		utils.LogInfo("Tool deleted: id=%d, title=%s, author=%s", id, title, admin.Username)
 	}
 	c.Redirect("/admin/tool", 302)
 }
