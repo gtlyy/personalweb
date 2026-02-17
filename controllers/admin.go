@@ -1,13 +1,29 @@
 package controllers
 
 import (
-	"github.com/beego/beego/v2/client/orm"
-	"github.com/beego/beego/v2/server/web"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"personalweb/models"
 	"personalweb/utils"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/beego/beego/v2/client/orm"
+	"github.com/beego/beego/v2/core/logs"
+	"github.com/beego/beego/v2/server/web"
+)
+
+const (
+	MaxUploadSize     = 50 * 1024 * 1024 // 50MB
+	AllowedExtensions = ".zip"
+)
+
+var (
+	ErrFileTooLarge    = errors.New("文件大小超出限制")
+	ErrInvalidFileType = errors.New("只允许上传 zip 文件")
 )
 
 type AdminController struct {
@@ -22,7 +38,6 @@ func (c *AdminController) Prepare() {
 			return
 		}
 	}
-	// 修复：正确断言为 models.Admin
 	admin, ok := c.GetSession("admin").(models.Admin)
 	if !ok {
 		c.Redirect("/admin/login", 302)
@@ -32,8 +47,84 @@ func (c *AdminController) Prepare() {
 	c.Data["Admin"] = admin
 }
 
+func (c *AdminController) validateUpload(filePath string) error {
+	// 检查文件大小
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	if fileInfo.Size() > MaxUploadSize {
+		return ErrFileTooLarge
+	}
+
+	// 检查文件扩展名
+	ext := strings.ToLower(filepath.Ext(fileInfo.Name()))
+	if ext != AllowedExtensions {
+		return ErrInvalidFileType
+	}
+
+	// 验证文件头 (zip 文件魔数: 50 4B)
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	header := make([]byte, 2)
+	n, err := f.Read(header)
+	if err != nil || n < 2 {
+		return errors.New("无法读取文件")
+	}
+
+	// ZIP: 50 4B (PK)
+	if header[0] != 0x50 || header[1] != 0x4B {
+		return ErrInvalidFileType
+	}
+
+	return nil
+}
+
+func (c *AdminController) handleUpload(folderType string) (string, error) {
+	f, header, err := c.GetFile("zipfile")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	// 先保存到临时文件
+	folder := folderType + "_" + time.Now().Format("20060102150405")
+	tempDir := "./static/uploads/temp/"
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return "", err
+	}
+	tempPath := tempDir + header.Filename
+
+	if err := c.SaveToFile("zipfile", tempPath); err != nil {
+		return "", err
+	}
+	defer os.Remove(tempPath)
+
+	// 验证文件
+	if err := c.validateUpload(tempPath); err != nil {
+		return "", err
+	}
+
+	// 解压
+	upload := "./static/uploads/"
+	extractPath := upload + folder
+	if err := utils.Unzip(tempPath, extractPath); err != nil {
+		return "", fmt.Errorf("解压失败: %v", err)
+	}
+
+	return folder, nil
+}
+
 // 登录
 func (c *AdminController) Login() {
+	attempts := c.GetSession("login_attempts")
+	if attempts == nil {
+		c.SetSession("login_attempts", 0)
+	}
 	c.TplName = "admin/login.tpl"
 }
 
@@ -41,20 +132,44 @@ func (c *AdminController) DoLogin() {
 	username := c.GetString("username")
 	password := c.GetString("password")
 
+	attempts := c.GetSession("login_attempts")
+	attemptCount := 0
+	if attempts != nil {
+		attemptCount = attempts.(int)
+	}
+
+	if attemptCount >= 5 {
+		lastAttempt := c.GetSession("last_login_attempt")
+		if lastAttempt != nil {
+			lastTime := lastAttempt.(time.Time)
+			if time.Since(lastTime) < 5*time.Minute {
+				c.Data["Msg"] = "登录尝试过多，请5分钟后再试"
+				c.TplName = "admin/login.tpl"
+				return
+			}
+		}
+		c.SetSession("login_attempts", 0)
+	}
+
 	o := orm.NewOrm()
-	var admin models.Admin // 确保 models.Admin 可访问
+	var admin models.Admin
 	err := o.QueryTable("admin").Filter("username", username).One(&admin)
 	if err != nil {
+		c.SetSession("login_attempts", attemptCount+1)
+		c.SetSession("last_login_attempt", time.Now())
 		c.Data["Msg"] = "账号不存在"
 		c.TplName = "admin/login.tpl"
 		return
 	}
 	if !admin.CheckPassword(password) {
+		c.SetSession("login_attempts", attemptCount+1)
+		c.SetSession("last_login_attempt", time.Now())
 		c.Data["Msg"] = "密码错误"
 		c.TplName = "admin/login.tpl"
 		return
 	}
 
+	c.SetSession("login_attempts", 0)
 	c.SetSession("admin", admin)
 	c.Redirect("/admin/index", 302)
 }
@@ -95,7 +210,7 @@ func (c *AdminController) DoAdd() {
 	c.Redirect("/admin/index", 302)
 }
 
-// 编辑文章（修复 ORM Read 传参）
+// 编辑文章
 func (c *AdminController) Edit() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
@@ -151,7 +266,6 @@ func (c *AdminController) ChangePassword() {
 		c.TplName = "admin/password.tpl"
 		return
 	}
-	// 修复：正确断言 models.Admin
 	adminObj, ok := c.GetSession("admin").(models.Admin)
 	if !ok {
 		c.DestroySession()
@@ -159,7 +273,7 @@ func (c *AdminController) ChangePassword() {
 		return
 	}
 	o := orm.NewOrm()
-	var admin models.Admin // 确保 models.Admin 可访问
+	var admin models.Admin
 	err := o.QueryTable("admin").Filter("id", adminObj.Id).One(&admin)
 	if err != nil {
 		c.Data["Msg"] = "用户异常"
@@ -197,29 +311,24 @@ func (c *AdminController) GameDoAdd() {
 	category := c.GetString("category")
 	status, _ := c.GetInt("status")
 
-	f, _, err := c.GetFile("zipfile")
-	if err == nil {
-		defer f.Close()
-		folder := "game_" + time.Now().Format("20060102150405")
-		upload := "./static/uploads/"
-		os.MkdirAll(upload, 0755)
-		zipPath := upload + folder + ".zip"
-		c.SaveToFile("zipfile", zipPath)
-		utils.Unzip(zipPath, upload+folder)
-		os.Remove(zipPath)
-
-		o := orm.NewOrm()
-		o.Insert(&models.Game{
-			Title:    title,
-			Category: category,
-			Folder:   folder,
-			Status:   status,
-		})
+	folder, err := c.handleUpload("game")
+	if err != nil {
+		logs.Error("处理上传文件失败: %v", err)
+		c.Redirect("/admin/game", 302)
+		return
 	}
+
+	o := orm.NewOrm()
+	o.Insert(&models.Game{
+		Title:    title,
+		Category: category,
+		Folder:   folder,
+		Status:   status,
+	})
 	c.Redirect("/admin/game", 302)
 }
 
-// 编辑游戏（修复 ORM Read 传参）
+// 编辑游戏
 func (c *AdminController) GameEdit() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
@@ -253,7 +362,12 @@ func (c *AdminController) GameDoEdit() {
 func (c *AdminController) GameDel() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
-	o.Delete(&models.Game{Id: id})
+	game := models.Game{Id: id}
+	if o.Read(&game) == nil {
+		uploadPath := "./static/uploads/" + game.Folder
+		os.RemoveAll(uploadPath)
+		o.Delete(&game)
+	}
 	c.Redirect("/admin/game", 302)
 }
 
@@ -275,29 +389,24 @@ func (c *AdminController) ToolDoAdd() {
 	category := c.GetString("category")
 	status, _ := c.GetInt("status")
 
-	f, _, err := c.GetFile("zipfile")
-	if err == nil {
-		defer f.Close()
-		folder := "tool_" + time.Now().Format("20060102150405")
-		upload := "./static/uploads/"
-		os.MkdirAll(upload, 0755)
-		zipPath := upload + folder + ".zip"
-		c.SaveToFile("zipfile", zipPath)
-		utils.Unzip(zipPath, upload+folder)
-		os.Remove(zipPath)
-
-		o := orm.NewOrm()
-		o.Insert(&models.Tool{
-			Title:    title,
-			Category: category,
-			Folder:   folder,
-			Status:   status,
-		})
+	folder, err := c.handleUpload("tool")
+	if err != nil {
+		logs.Error("处理上传文件失败: %v", err)
+		c.Redirect("/admin/tool", 302)
+		return
 	}
+
+	o := orm.NewOrm()
+	o.Insert(&models.Tool{
+		Title:    title,
+		Category: category,
+		Folder:   folder,
+		Status:   status,
+	})
 	c.Redirect("/admin/tool", 302)
 }
 
-// 编辑工具（修复 ORM Read 传参）
+// 编辑工具
 func (c *AdminController) ToolEdit() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
@@ -331,6 +440,11 @@ func (c *AdminController) ToolDoEdit() {
 func (c *AdminController) ToolDel() {
 	id, _ := strconv.Atoi(c.Ctx.Input.Param(":id"))
 	o := orm.NewOrm()
-	o.Delete(&models.Tool{Id: id})
+	tool := models.Tool{Id: id}
+	if o.Read(&tool) == nil {
+		uploadPath := "./static/uploads/" + tool.Folder
+		os.RemoveAll(uploadPath)
+		o.Delete(&tool)
+	}
 	c.Redirect("/admin/tool", 302)
 }
