@@ -19,18 +19,38 @@ import (
 const (
 	MaxUploadSize     = 50 * 1024 * 1024 // 50MB
 	AllowedExtensions = ".zip"
+	MaxTitleLength    = 100
+	MaxCategoryLength = 50
+	MaxContentLength  = 500000 // 500KB
 )
 
 var (
 	ErrFileTooLarge    = errors.New("文件大小超出限制")
 	ErrInvalidFileType = errors.New("只允许上传 zip 文件")
+	ErrInvalidInput    = errors.New("输入验证失败")
 )
+
+func validateInput(title, category string) error {
+	title = strings.TrimSpace(title)
+	category = strings.TrimSpace(category)
+
+	if title == "" || len(title) > MaxTitleLength {
+		return fmt.Errorf("标题长度必须在1-%d字符之间", MaxTitleLength)
+	}
+	if category == "" || len(category) > MaxCategoryLength {
+		return fmt.Errorf("分类长度必须在1-%d字符之间", MaxCategoryLength)
+	}
+	return nil
+}
 
 type AdminController struct {
 	web.Controller
 }
 
 func (c *AdminController) Prepare() {
+	c.Controller.Prepare()
+	c.EnableXSRF = true
+
 	path := c.Ctx.Request.URL.Path
 	exclude := []string{"/admin/login", "/admin/logout"}
 	for _, p := range exclude {
@@ -45,6 +65,7 @@ func (c *AdminController) Prepare() {
 		return
 	}
 	c.Data["Admin"] = admin
+	c.Data["xsrf_token"] = c.XSRFToken()
 }
 
 func (c *AdminController) validateUpload(filePath string) error {
@@ -200,13 +221,33 @@ func (c *AdminController) DoAdd() {
 	content := c.GetString("content")
 	status, _ := c.GetInt("status")
 
+	// 输入验证
+	if err := validateInput(title, category); err != nil {
+		c.Data["Msg"] = err.Error()
+		c.TplName = "admin/add.tpl"
+		return
+	}
+
+	// 内容长度检查
+	if len(content) > MaxContentLength {
+		c.Data["Msg"] = fmt.Errorf("内容长度不能超过%d字符", MaxContentLength).Error()
+		c.TplName = "admin/add.tpl"
+		return
+	}
+
 	o := orm.NewOrm()
-	o.Insert(&models.Article{
+	_, err := o.Insert(&models.Article{
 		Title:     title,
 		Category:  category,
 		ContentMd: content,
 		Status:    status,
 	})
+	if err != nil {
+		logs.Error("Failed to insert article: %v", err)
+		c.Data["Msg"] = "保存失败，请重试"
+		c.TplName = "admin/add.tpl"
+		return
+	}
 	c.Redirect("/admin/index", 302)
 }
 
