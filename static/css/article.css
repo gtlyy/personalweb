@@ -1,0 +1,135 @@
+.article-content {
+    font-size: 1.125rem;
+    line-height: 1.8;
+    color: #374151;
+}
+
+.article-content h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin: 2rem 0 1rem;
+}
+
+.article-content h2 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.75rem;
+}
+
+.article-content h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.5rem;
+}
+
+.article-content p {
+    margin: 1rem 0;
+}
+
+.article-content ul, .article-content ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.article-content ul li {
+    list-style-type: disc;
+    margin: 0.5rem 0;
+    padding-left: 0.25rem;
+}
+
+.article-content ol li {
+    list-style-type: decimal;
+    margin: 0.5rem 0;
+    padding-left: 0.25rem;
+}
+
+.article-content li strong {
+    font-weight: 600;
+}
+
+.article-content code {
+    background: #f3f4f6;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.875em;
+    color: #dc2626;
+}
+
+.article-content pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+}
+
+.article-content pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 0.9em;
+    line-height: 1.5;
+    display: block;
+}
+
+.article-content blockquote {
+    border-left: 4px solid #6366f1;
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.article-content a {
+    color: #4f46e5;
+    text-decoration: underline;
+}
+
+.article-content a:hover {
+    color: #4338ca;
+}
+
+.article-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    margin: 1.5rem 0;
+}
+
+.article-content hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 2rem 0;
+}
+
+.article-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+}
+
+.article-content th, .article-content td {
+    border: 1px solid #e5e7eb;
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.article-content th {
+    background: #f9fafb;
+    font-weight: 600;
+}
+
+.article-content pre + pre {
+    margin-top: 0;
+}
+
+.article-content p code {
+    display: inline;
+}
+
+.article-content pre code:before,
+.article-content pre code:after {
+    content: none;
+}
