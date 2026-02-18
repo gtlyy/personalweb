@@ -2,3 +2,4 @@ personalweb
 data/
 *.db
 logs/
+static/uploads/
