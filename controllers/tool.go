@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"personalweb/models"
-	"strconv"
 	"github.com/beego/beego/v2/client/orm"
 	"github.com/beego/beego/v2/server/web"
+	"personalweb/models"
+	"strconv"
 )
 
 type ToolController struct {
@@ -24,8 +24,8 @@ func (c *ToolController) Use() {
 	o := orm.NewOrm()
 	tool := models.Tool{Id: id}
 	if o.Read(&tool) == nil && tool.Status == 2 {
-		c.Data["Tool"] = tool
-		c.TplName = "tool/use.tpl"
+		// 直接重定向到工具的 index.html，而不是在iframe中显示
+		c.Redirect("/static/uploads/"+tool.Folder+"/index.html", 302)
 		return
 	}
 	c.Redirect("/tools", 302)

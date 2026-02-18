@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"personalweb/models"
-	"strconv"
 	"github.com/beego/beego/v2/client/orm"
 	"github.com/beego/beego/v2/server/web"
+	"personalweb/models"
+	"strconv"
 )
 
 type GameController struct {
@@ -24,8 +24,8 @@ func (c *GameController) Play() {
 	o := orm.NewOrm()
 	game := models.Game{Id: id}
 	if o.Read(&game) == nil && game.Status == 2 {
-		c.Data["Game"] = game
-		c.TplName = "game/play.tpl"
+		// 直接重定向到游戏的 index.html，而不是在 iframe 中显示
+		c.Redirect("/static/uploads/"+game.Folder+"/index.html", 302)
 		return
 	}
 	c.Redirect("/games", 302)
