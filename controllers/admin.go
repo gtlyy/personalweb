@@ -31,6 +31,11 @@ func getClientIP(c *web.Controller) string {
 	return ip
 }
 
+func isUploadEnabled() bool {
+	enableUpload := web.AppConfig.DefaultBool("enable_upload", false)
+	return enableUpload
+}
+
 var (
 	ErrFileTooLarge    = errors.New("文件大小超出限制")
 	ErrInvalidFileType = errors.New("只允许上传 zip 文件")
@@ -379,6 +384,12 @@ func (c *AdminController) GameAdd() {
 }
 
 func (c *AdminController) GameDoAdd() {
+	if !isUploadEnabled() {
+		c.Data["Msg"] = "上传功能已关闭，请在配置文件中启用"
+		c.TplName = "admin/game/add.tpl"
+		return
+	}
+
 	title := c.GetString("title")
 	category := c.GetString("category")
 	status, _ := c.GetInt("status")
@@ -462,6 +473,12 @@ func (c *AdminController) ToolAdd() {
 }
 
 func (c *AdminController) ToolDoAdd() {
+	if !isUploadEnabled() {
+		c.Data["Msg"] = "上传功能已关闭，请在配置文件中启用"
+		c.TplName = "admin/tool/add.tpl"
+		return
+	}
+
 	title := c.GetString("title")
 	category := c.GetString("category")
 	status, _ := c.GetInt("status")
